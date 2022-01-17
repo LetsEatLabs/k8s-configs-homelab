@@ -1,0 +1,103 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-unbound
+  namespace: house
+provisioner: kubernetes.io/no-provisioner
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: unbound-local-etc-volume
+  namespace: house
+  labels:
+    directory: etc
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: local-unbound
+  local:
+    path: /data/unbound/etc
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - k-cup
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: house
+  name: unbound-local-etc-claim
+spec:
+  storageClassName: local-unbound
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  selector:
+    matchLabels:
+      directory: etc
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unbound
+  namespace: house
+  labels:
+    app: unbound
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: unbound
+  template:
+    metadata:
+      labels:
+        app: unbound
+        name: unbound
+    spec:
+      containers:
+      - name: unbound
+        image: mvance/unbound:latest
+        imagePullPolicy: Always
+        volumeMounts:
+        - name: unbound-local-etc-volume
+          mountPath: "/opt/unbound/etc/unbound/"
+      volumes:
+      - name: unbound-local-etc-volume
+        persistentVolumeClaim:
+          claimName: unbound-local-etc-claim
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: unbound
+  namespace: house
+spec:
+  selector:
+    app: unbound
+  ports:
+  - port: 5353
+    targetPort: 53
+    protocol: TCP
+    name: unbound-tcp
+  - port: 5353
+    targetPort: 53
+    protocol: UDP
+    name: unbound-udp
+  externalIPs:
+  - 192.168.0.249
