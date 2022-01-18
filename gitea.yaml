@@ -1,0 +1,112 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-gitea
+  namespace: house
+provisioner: kubernetes.io/no-provisioner
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: gitea-local-git-volume
+  namespace: house
+  labels:
+    directory: data
+spec:
+  capacity:
+    storage: 4Gi
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-gitea
+  local:
+    path: /data/gitea/data
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - k-cup
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: house
+  name: gitea-local-git-claim
+spec:
+  storageClassName: local-gitea
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 4Gi
+  selector:
+    matchLabels:
+      directory: data
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitea
+  namespace: house
+  labels:
+    app: gitea
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gitea
+  template:
+    metadata:
+      labels:
+        app: gitea
+        name: gitea
+    spec:
+      containers:
+      - name: gitea
+        image: gitea/gitea:latest
+        imagePullPolicy: Always
+        volumeMounts:
+        - name: gitea-local-git-volume
+          mountPath: "/data"
+
+        env:
+          - name: USER_UID
+            value: "1000"
+          - name: USER_GID
+            value: "1000"
+          - name: TZ
+            value: "America/Los_Angeles"
+
+      volumes:
+      - name: gitea-local-git-volume
+        persistentVolumeClaim:
+          claimName: gitea-local-git-claim
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitea
+  namespace: house
+spec:
+  selector:
+    app: gitea
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: gitea-webui-tcp
+  - port: 222
+    targetPort: 22
+    protocol: TCP
+    name: gitea-ssh
+  externalIPs:
+  - 192.168.0.249
