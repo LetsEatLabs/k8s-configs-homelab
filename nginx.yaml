@@ -2,27 +2,28 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: local-unbound
+  name: local-nginx
   namespace: house
 provisioner: kubernetes.io/no-provisioner
+#volumeBindingMode: Immediate
 
 ---
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: unbound-local-etc-volume
+  name: nginx-local-https-volume
   namespace: house
   labels:
-    directory: etc
+    directory: https
 spec:
   capacity:
     storage: 1Gi
   accessModes:
   - ReadWriteOnce
   persistentVolumeReclaimPolicy: Delete
-  storageClassName: local-unbound
+  storageClassName: local-nginx
   local:
-    path: /data/unbound/etc
+    path: /data/nginx/https
   nodeAffinity:
     required:
       nodeSelectorTerms:
@@ -36,10 +37,10 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
+  name: nginx-local-https-claim
   namespace: house
-  name: unbound-local-etc-claim
 spec:
-  storageClassName: local-unbound
+  storageClassName: local-nginx
   accessModes:
   - ReadWriteOnce
   resources:
@@ -47,57 +48,65 @@ spec:
       storage: 1Gi
   selector:
     matchLabels:
-      directory: etc
+      directory: https
+
 
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: unbound
+  name: nginx
   namespace: house
   labels:
-    app: unbound
+    app: nginx
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: unbound
+      app: nginx
   template:
     metadata:
       labels:
-        app: unbound
-        name: unbound
+        app: nginx
+        name: nginx
     spec:
       containers:
-      - name: unbound
-        image: mvance/unbound:latest
+      - name: nginx
+        image:  nginx:1.16.0-alpine
         imagePullPolicy: Always
-        volumeMounts:
-        - name: unbound-local-etc-volume
-          mountPath: "/opt/unbound/etc/unbound/"
-      volumes:
-      - name: unbound-local-etc-volume
-        persistentVolumeClaim:
-          claimName: unbound-local-etc-claim
 
+        volumeMounts:
+          - name: nginx-local-https-volume
+            mountPath: "/etc/letsencrypt/live"
+          - name: nginx-config-volume
+            mountPath: "/etc/nginx/nginx.conf"
+            
+
+      volumes:
+      - name: nginx-local-https-volume
+        persistentVolumeClaim:
+          claimName: nginx-local-https-claim
+      - name: nginx-config-volume
+        hostPath:
+          path: /data/nginx/nginx.conf
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: unbound
+  name: nginx
   namespace: house
 spec:
   selector:
-    app: unbound
+    app: nginx
   ports:
-  - port: 5353
-    targetPort: 5353
+  - port: 3999
+    targetPort: 80
+    name: nginx-http-tcp
     protocol: TCP
-    name: unbound-tcp
-  - port: 5353
-    targetPort: 5353
-    protocol: UDP
-    name: unbound-udp
+  - port: 4000
+    targetPort: 443
+    name: nginx-https-tcp
+    protocol: TCP
   externalIPs:
   - 192.168.0.249
