@@ -1,0 +1,156 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-rss
+  namespace: house
+provisioner: kubernetes.io/no-provisioner
+#volumeBindingMode: Immediate
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: rss-local-rss-volume
+  namespace: house
+  labels:
+    directory: rss
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: local-rss
+  local:
+    path: /data/rss/rss
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - k-cup
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rss-local-rss-claim
+  namespace: house
+spec:
+  storageClassName: local-rss
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  selector:
+    matchLabels:
+      directory: rss
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: rss-local-scripts-volume
+  namespace: house
+  labels:
+    directory: scripts
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: local-rss
+  local:
+    path: /data/rss/scripts
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - k-cup
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rss-local-scripts-claim
+  namespace: house
+spec:
+  storageClassName: local-rss
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  selector:
+    matchLabels:
+      directory: scripts
+
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rss
+  namespace: house
+  labels:
+    app: rss
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rss
+  template:
+    metadata:
+      labels:
+        app: rss
+        name: rss
+    spec:
+      containers:
+      - name: rss
+        image: docker.io/galleywest/rss-producer
+        imagePullPolicy: Always
+
+        volumeMounts:
+          - name: rss-local-rss-volume
+            mountPath: "/app/rss"
+          - name: rss-local-scripts-volume
+            mountPath: "/app/scripts"
+          - name: rss-config-volume
+            mountPath: "/app/config.json"
+            
+
+      volumes:
+      - name: rss-local-rss-volume
+        persistentVolumeClaim:
+          claimName: rss-local-rss-claim
+      - name: rss-local-scripts-volume
+        persistentVolumeClaim:
+          claimName: rss-local-scripts-claim
+      - name: rss-config-volume
+        hostPath:
+          path: /data/rss/config.json
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rss
+  namespace: house
+spec:
+  selector:
+    app: rss
+  ports:
+  - port: 5000
+    targetPort: 5000
+    name: rss-webui-tcp
+    protocol: TCP
+  externalIPs:
+  - 192.168.0.249
