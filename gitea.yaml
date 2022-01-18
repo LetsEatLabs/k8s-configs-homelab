@@ -4,6 +4,7 @@ kind: StorageClass
 metadata:
   name: local-gitea
   namespace: house
+reclaimPolicy: Retain
 provisioner: kubernetes.io/no-provisioner
 
 ---
