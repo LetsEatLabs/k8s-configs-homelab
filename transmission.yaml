@@ -1,0 +1,218 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-trans
+  namespace: house
+provisioner: kubernetes.io/no-provisioner
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: trans-local-downloads-volume
+  namespace: house
+  labels:
+    directory: downloads
+spec:
+  capacity:
+    storage: 16Gi
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: local-trans
+  local:
+    path: /data/transmission/downloads
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - k-cup
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: trans-local-config-volume
+  namespace: house
+  labels:
+    directory: config
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: local-trans
+  local:
+    path: /data/transmission/config
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - k-cup
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: trans-local-watch-volume
+  namespace: house
+  labels:
+    directory: watch
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: local-trans
+  local:
+    path: /data/transmission/watch
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - k-cup
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: house
+  name: trans-local-downloads-claim
+spec:
+  storageClassName: local-trans
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 16Gi
+  selector:
+    matchLabels:
+      directory: downloads
+
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: house
+  name: trans-local-watch-claim
+spec:
+  storageClassName: local-trans
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  selector:
+    matchLabels:
+      directory: watch
+
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: house
+  name: trans-local-config-claim
+spec:
+  storageClassName: local-trans
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  selector:
+    matchLabels:
+      directory: config
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transmission
+  namespace: house
+  labels:
+    app: transmission
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: transmission
+  template:
+    metadata:
+      labels:
+        app: transmission
+        name: transmission
+    spec:
+      containers:
+      - name: transmission
+        image: ghcr.io/linuxserver/transmission
+        imagePullPolicy: Always
+        volumeMounts:
+        - name: trans-local-downloads-volume
+          mountPath: "/downloads"
+        - name: trans-local-watch-volume
+          mountPath: "/watch"
+        - name: trans-local-config-volume
+          mountPath: "/config"
+
+        env:
+          - name: PUID
+            value: "1000"
+          - name: PGID
+            value: "1000"
+          - name: TZ
+            value: "America/Los_Angeles"
+          - name: USER
+            value: "admin"
+          - name: PASS
+            value: "TransmissionAdmin"
+
+      volumes:
+      - name: trans-local-downloads-volume
+        persistentVolumeClaim:
+          claimName: trans-local-downloads-claim
+      - name: trans-local-watch-volume
+        persistentVolumeClaim:
+          claimName: trans-local-watch-claim
+      - name: trans-local-config-volume
+        persistentVolumeClaim:
+          claimName: trans-local-config-claim
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: transmission
+  namespace: house
+spec:
+  selector:
+    app: transmission
+  ports:
+  - port: 9091
+    targetPort: 9091
+    protocol: TCP
+    name: trans-webui-tcp
+  - port: 51413
+    targetPort: 51413
+    protocol: UDP
+    name: trans-udd
+  - port: 51413
+    targetPort: 51413
+    protocol: TCP
+    name: trans-tcp
+  externalIPs:
+  - 192.168.0.249
